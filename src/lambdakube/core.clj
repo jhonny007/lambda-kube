@@ -27,6 +27,16 @@
                         (with-meta obj {:additional additional}))
     :else obj))
 
+(defn namespace
+  ([name options]
+   {:apiVersion "v1"
+    :kind "Namespace"
+    :metadata {:name name}
+    :spec options})
+  ([name]
+   (namespace name {})))
+
+
 (defn pod
   ([name labels options]
    {:apiVersion "v1"
@@ -37,7 +47,7 @@
   ([name labels]
    (pod name labels {})))
 
-(defn deployment [pod replicas]
+(defn deployment [pod replicas namespace]
   (let [name (-> pod :metadata :name)
         labels (-> pod :metadata :labels)
         template (-> pod
@@ -46,7 +56,8 @@
     {:apiVersion "apps/v1"
      :kind "Deployment"
      :metadata {:name name
-                :labels labels}
+                :labels labels
+                :namespace namespace}
      :spec {:replicas replicas
             :selector {:matchLabels labels}
             :template template}}))
@@ -99,6 +110,11 @@
      (update pod :spec field-conj :containers container)))
   ([pod name image]
    (add-container pod name image {})))
+
+(defn add-image-pull-secret
+  ([pod name]
+   (let [image-pull-secret (merge {:name name})]
+     (update pod :spec field-conj :imagePullSecrets image-pull-secret))))
 
 (defn add-env [container envs]
   (let [envs (for [[name val] envs]
@@ -169,9 +185,11 @@
 
 (defn expose [depl name portfunc attrs editfunc]
   (let [pod (-> depl :spec :template)
+        ns  (-> depl :metadata :namespace)
         srv {:kind "Service"
              :apiVersion "v1"
-             :metadata {:name name}
+             :metadata {:name name
+                        :namespace ns}
              :spec (-> attrs
                        (merge {:selector (-> pod :metadata :labels)}))}
         [pod srv] (portfunc [pod srv editfunc])
@@ -262,7 +280,7 @@
                     (m node))
                 (throw (Exception. (str "Invalid matcher arity: " arity)))))
     (map? m) (fn [node ctx]
-               (every? identity (for [[k v] m]
+                (every? identity (for [[k v] m]
                                   (let [node (merge ctx node)
                                         m' (matcher v)]
                                     (and (contains? node k)
@@ -359,22 +377,38 @@
        (str/join "---\n")))
 
 
-(defn kube-apply
-  ([content file]
-   (kube-apply content file nil nil))
-  ([content file kube-namespace]
-   (kube-apply content kube-namespace nil))
-  ([content file kube-namespace kube-config]
+(defn generic-apply
+  ([commands content file kube-namespace kube-config]
    (let [namespace-param (if (nil? kube-namespace) nil (str "--namespace=" kube-namespace))
          config-param (if (nil? kube-config) nil (str "--kubeconfig=" kube-config))]
      (when-not (and (.exists file)
                     (= (slurp file) content))
        (spit file content)
-       (let [res (apply sh/sh (remove nil? ["kubectl" "apply" namespace-param config-param "-f" (str file)]))]
+       (let [cmd (remove nil? (conj commands "apply" namespace-param config-param "-f" (str file)))
+             res (apply sh/sh cmd)]
+         (print cmd)
          (when-not (= (:exit res) 0)
            (.delete file)
            (throw (Exception. (:err res)))))))))
 
+(defn kube-apply
+  ([content file]
+   (kube-apply content file nil nil))
+  ([content file kube-namespace]
+   (kube-apply content file kube-namespace nil))
+  ([content file kube-namespace kube-config]
+   (let [commands ["kubectl"]]
+     (generic-apply commands content file kube-namespace kube-config))))
+
+
+(defn rancher-apply
+  ([content file]
+   (rancher-apply content file nil nil))
+  ([content file kube-namespace]
+   (rancher-apply content file kube-namespace nil))
+  ([content file kube-namespace kube-config]
+   (let [commands ["rancher" "kubectl"]]
+     (generic-apply commands content file kube-namespace kube-config))))
 
 (defn port
   ([cont portname podport]

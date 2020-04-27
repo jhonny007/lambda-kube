@@ -1,5 +1,5 @@
 Lambda-kube makes Helm redundant. Here is a description of why we
-thing Lambda-kube provides a better solution.
+think Lambda-kube provides a better solution.
 
 # Text-based Templates
 Helm charts use text-based templates to generate YAML files. While

@@ -100,6 +100,21 @@
    (let [portname (-> dep :ports first first)]
      (wait-for-service-port pod dep portname))))
 
+(defn vaillant-wait-for-service-port
+  ([pod dep portname]
+   (let [{:keys [hostname ports]} dep
+         cont (keyword (str "wait-for-" (name hostname) "-" (name portname)))]
+     (-> pod
+         (lk/add-init-container cont "docrep1-com.vaillant-group.com/di/busybox:di"
+                                {:command ["sh"
+                                           "-c"
+                                           (str "while ! nc -z " hostname " " (ports portname) "; do sleep 1; done")]}))))
+  ([pod dep]
+   (when-not (= (-> dep :ports count) 1)
+     (throw (Exception. "Port name must be specified when waiting for a service exposing more than one port.")))
+   (let [portname (-> dep :ports first first)]
+     (wait-for-service-port pod dep portname))))
+
 
 (defn add-clj-test-container [pod cont deps constants exprs]
   (add-clj-container pod cont deps constants exprs

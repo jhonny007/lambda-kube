@@ -1,4 +1,4 @@
-(defproject jhonny007/lambdakube "0.10.1-SNAPSHOT"
+(defproject jhonny007/lambdakube "0.10.1"
   :description "A Clojure library for generating Kubernetes API objects "
   :url "https://github.com/jhonny007/lambda-kube"
   :license {:name "Eclipse Public License"
